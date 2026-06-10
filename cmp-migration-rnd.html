@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KMM → Compose Multiplatform · Architecture Evolution</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #07090f;
+    --bg-soft: #0d111c;
+    --panel: rgba(20, 26, 41, 0.7);
+    --panel-solid: #11162400;
+    --border: rgba(120, 140, 200, 0.14);
+    --border-strong: rgba(120, 140, 200, 0.3);
+    --txt: #eef2ff;
+    --txt-dim: #9aa7c7;
+    --txt-faint: #67739a;
+    --android: #3ddc84;
+    --ios: #6fa8ff;
+    --accent: #8b7bff;
+    --accent2: #29d3c2;
+    --warn: #ffb347;
+    --radius: 18px;
+    --shadow: 0 20px 60px -20px rgba(0,0,0,0.7);
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body {
+    background: var(--bg);
+    color: var(--txt);
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ambient background */
+  .ambient {
+    position: fixed; inset: 0; z-index: -2; overflow: hidden;
+  }
+  .ambient::before, .ambient::after {
+    content: ""; position: absolute; border-radius: 50%;
+    filter: blur(120px); opacity: 0.5;
+  }
+  .ambient::before {
+    width: 50vw; height: 50vw; top: -15vw; left: -10vw;
+    background: radial-gradient(circle, #4b32d6 0%, transparent 70%);
+    animation: float1 18s ease-in-out infinite;
+  }
+  .ambient::after {
+    width: 45vw; height: 45vw; bottom: -15vw; right: -10vw;
+    background: radial-gradient(circle, #0f8f87 0%, transparent 70%);
+    animation: float2 22s ease-in-out infinite;
+  }
+  .grid-bg {
+    position: fixed; inset: 0; z-index: -1;
+    background-image:
+      linear-gradient(rgba(120,140,200,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,140,200,0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 30%, transparent 75%);
+  }
+  @keyframes float1 { 50% { transform: translate(6vw, 8vh) scale(1.1); } }
+  @keyframes float2 { 50% { transform: translate(-6vw, -6vh) scale(1.15); } }
+
+  /* nav */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 30px;
+    background: rgba(7,9,15,0.6);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--border);
+    transition: padding .3s ease;
+  }
+  nav .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: -.02em; }
+  nav .brand .logo-mark {
+    width: 28px; height: 28px; border-radius: 7px; display: block;
+    filter: drop-shadow(0 0 12px rgba(41,123,255,.35));
+  }
+  .footer-logo { height: 40px; width: auto; margin-bottom: 18px; opacity: .92; }
+  nav .links { display: flex; gap: 4px; }
+  nav .links a {
+    color: var(--txt-dim); text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 7px 13px; border-radius: 9px; transition: all .2s;
+  }
+  nav .links a:hover { color: var(--txt); background: rgba(120,140,200,0.1); }
+  @media (max-width: 880px) { nav .links { display: none; } }
+
+  /* layout */
+  section { padding: 110px 30px; position: relative; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent2); margin-bottom: 18px;
+    padding: 6px 14px; border: 1px solid var(--border-strong); border-radius: 100px;
+    background: rgba(41,211,194,0.06);
+  }
+  .eyebrow .num { color: var(--txt-faint); }
+  h1 { font-size: clamp(2.6rem, 6.5vw, 5rem); font-weight: 900; letter-spacing: -.035em; line-height: 1.02; }
+  h2 { font-size: clamp(1.9rem, 4vw, 3rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.08; margin-bottom: 18px; }
+  h3 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; }
+  p.lead { font-size: clamp(1.05rem, 2vw, 1.3rem); color: var(--txt-dim); max-width: 680px; }
+  .muted { color: var(--txt-dim); }
+  .gradient-text {
+    background: linear-gradient(110deg, #fff 0%, #a99bff 45%, #29d3c2 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* hero */
+  #hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding-top: 90px; }
+  #hero .tag {
+    display: inline-flex; gap: 10px; align-items: center; width: fit-content;
+    font-size: 13px; font-weight: 600; color: var(--txt-dim);
+    border: 1px solid var(--border-strong); border-radius: 100px; padding: 8px 16px;
+    margin-bottom: 30px; background: var(--panel); backdrop-filter: blur(10px);
+  }
+  #hero .tag .pulse {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--android);
+    box-shadow: 0 0 0 0 rgba(61,220,132,.6); animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 9px rgba(61,220,132,0); } 100% { box-shadow: 0 0 0 0 rgba(61,220,132,0); } }
+  #hero h1 { margin-bottom: 26px; }
+  #hero .sub { font-size: clamp(1.1rem, 2.2vw, 1.45rem); color: var(--txt-dim); max-width: 640px; margin-bottom: 40px; }
+  #hero .sub b { color: var(--txt); font-weight: 700; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px 26px; backdrop-filter: blur(12px); min-width: 150px;
+  }
+  .stat .v { font-size: 2rem; font-weight: 900; letter-spacing: -.03em; }
+  .stat .v.g { background: linear-gradient(120deg,var(--android),var(--accent2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .stat .v.b { background: linear-gradient(120deg,var(--ios),var(--accent)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .stat .l { font-size: 12.5px; color: var(--txt-faint); font-weight: 500; margin-top: 4px; }
+  .scroll-hint {
+    margin-top: 56px; display: flex; align-items: center; gap: 10px;
+    color: var(--txt-faint); font-size: 13px; font-weight: 500;
+  }
+  .scroll-hint .mouse { width: 22px; height: 34px; border: 2px solid var(--txt-faint); border-radius: 12px; position: relative; }
+  .scroll-hint .mouse::after {
+    content: ""; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    width: 3px; height: 7px; border-radius: 2px; background: var(--txt-faint); animation: scrolly 1.6s infinite;
+  }
+  @keyframes scrolly { 0%{opacity:0;transform:translate(-50%,0)} 40%{opacity:1} 80%{opacity:0;transform:translate(-50%,10px)} }
+
+  /* reveal */
+  .reveal { opacity: 0; transform: translateY(36px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+  .reveal.d1 { transition-delay: .08s; } .reveal.d2 { transition-delay: .16s; }
+  .reveal.d3 { transition-delay: .24s; } .reveal.d4 { transition-delay: .32s; }
+
+  /* cards */
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px; backdrop-filter: blur(12px); transition: transform .3s, border-color .3s;
+  }
+  .card:hover { transform: translateY(-4px); border-color: var(--border-strong); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+  @media (max-width: 820px){ .grid2,.grid3 { grid-template-columns: 1fr; } }
+
+  /* problem split */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: stretch; }
+  @media (max-width: 820px){ .split { grid-template-columns: 1fr; } }
+  .pain-list { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+  .pain-list li { display: flex; gap: 12px; align-items: flex-start; color: var(--txt-dim); font-size: 15px; }
+  .pain-list li .ic { flex: none; width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; font-size: 12px; font-weight: 800; margin-top: 2px; }
+  .ic.bad { background: rgba(255,107,107,.15); color: #ff8585; }
+  .ic.good { background: rgba(61,220,132,.15); color: var(--android); }
+
+  /* diagram */
+  .diagram { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .layer {
+    width: 100%; max-width: 520px; text-align: center;
+    border-radius: 14px; padding: 18px 20px; font-weight: 700; position: relative;
+    border: 1px solid var(--border-strong); background: var(--panel-solid);
+  }
+  .layer .sub { font-weight: 500; font-size: 12.5px; color: var(--txt-faint); margin-top: 3px; }
+  .layer.platform { background: linear-gradient(135deg, rgba(61,220,132,.12), rgba(111,168,255,.12)); border-color: var(--border-strong); }
+  .layer.host { background: linear-gradient(135deg, rgba(139,123,255,.18), rgba(139,123,255,.05)); border-color: rgba(139,123,255,.4); }
+  .layer.ctrl { background: linear-gradient(135deg, rgba(255,179,71,.14), rgba(255,179,71,.04)); border-color: rgba(255,179,71,.35); }
+  .layer.ui { background: linear-gradient(135deg, rgba(41,211,194,.16), rgba(41,211,194,.04)); border-color: rgba(41,211,194,.4); }
+  .layer.logic { background: linear-gradient(135deg, rgba(120,140,200,.14), rgba(120,140,200,.03)); }
+  .connector { width: 2px; height: 28px; background: linear-gradient(var(--border-strong), var(--accent)); position: relative; }
+  .connector::after { content:"▼"; position:absolute; bottom:-4px; left:50%; transform:translateX(-50%); font-size:9px; color: var(--accent); }
+  .branch { display: flex; gap: 60px; width: 100%; max-width: 520px; justify-content: space-between; }
+  .branch .leg { display:flex; flex-direction:column; align-items:center; flex:1; }
+  .branch-line { display:flex; width:100%; max-width:520px; justify-content:space-between; }
+  .platform-chip { display:flex; gap:8px; align-items:center; font-weight:700; font-size:14px; padding:12px 18px; border-radius:12px; border:1px solid var(--border-strong); }
+  .platform-chip.a { color: var(--android); background: rgba(61,220,132,.08); }
+  .platform-chip.i { color: var(--ios); background: rgba(111,168,255,.08); }
+
+  /* asymmetric arch branch */
+  .split-down { width:2px; height:30px; background:var(--accent); margin:0 auto; }
+  .split-fork { position:relative; height:26px; width:60%; max-width:480px; margin:0 auto; }
+  .split-fork .bar { position:absolute; top:0; left:0; right:0; height:2px; background:var(--border-strong); }
+  .split-fork .dL, .split-fork .dR { position:absolute; top:0; width:2px; height:26px; background:var(--border-strong); }
+  .split-fork .dL { left:0; } .split-fork .dR { right:0; }
+  .arch-branch { display:flex; gap:24px; align-items:flex-start; }
+  @media (max-width:760px){ .arch-branch{ flex-direction:column; align-items:stretch; } .split-fork{ display:none; } .split-down{ height:18px; } }
+  .branch-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:0; padding:22px 16px 24px; border-radius:16px; border:1px solid var(--border); }
+  .branch-col.android { background:rgba(61,220,132,.04); border-color:rgba(61,220,132,.22); }
+  .branch-col.ios { background:rgba(111,168,255,.04); border-color:rgba(111,168,255,.22); }
+  .branch-col .platform-chip { margin-bottom:16px; }
+  .branch-col .layer { max-width:100%; width:100%; }
+
+  /* OLD vs NEW arch compare */
+  .arch-compare { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  @media (max-width:820px){ .arch-compare { grid-template-columns:1fr; } }
+  .arch-box { border:1px solid var(--border); border-radius:var(--radius); padding:26px; background:var(--panel); }
+  .arch-box.old { opacity:.92; }
+  .arch-box .tagline { font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; margin-bottom:18px; }
+  .arch-box.old .tagline { color:#ff8585; }
+  .arch-box.new .tagline { color:var(--android); }
+
+  /* component deep dive */
+  .comp { display:grid; grid-template-columns: 280px 1fr; gap:24px; align-items:start; margin-bottom:18px; }
+  @media (max-width:820px){ .comp { grid-template-columns:1fr; } }
+  .comp-side { position:sticky; top:90px; }
+  .comp-badge { display:inline-flex; align-items:center; gap:9px; font-family:var(--mono); font-size:13px; font-weight:600; padding:7px 14px; border-radius:10px; border:1px solid var(--border-strong); margin-bottom:14px; }
+  .comp-badge .d { width:9px; height:9px; border-radius:3px; }
+
+  /* code block */
+  .code {
+    background: #0a0d16; border: 1px solid var(--border); border-radius: 14px;
+    overflow: hidden; font-family: var(--mono); font-size: 13px; box-shadow: var(--shadow);
+  }
+  .code .bar { display:flex; align-items:center; gap:8px; padding:11px 16px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.02); }
+  .code .bar .dots { display:flex; gap:6px; }
+  .code .bar .dots i { width:11px; height:11px; border-radius:50%; display:block; }
+  .code .bar .dots i:nth-child(1){background:#ff5f57} .code .bar .dots i:nth-child(2){background:#febc2e} .code .bar .dots i:nth-child(3){background:#28c840}
+  .code .bar .fname { color:var(--txt-faint); font-size:12px; margin-left:6px; }
+  .code .bar .plat { margin-left:auto; font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; }
+  .code .bar .plat.a { color:var(--android); background:rgba(61,220,132,.12); }
+  .code .bar .plat.i { color:var(--ios); background:rgba(111,168,255,.12); }
+  .code .bar .plat.s { color:var(--accent2); background:rgba(41,211,194,.12); }
+  .code pre { padding: 18px 20px; overflow-x:auto; line-height:1.65; }
+  .code code { white-space: pre; }
+  .tok-key { color:#c792ea; } .tok-fn { color:#82aaff; } .tok-str { color:#c3e88d; }
+  .tok-type { color:#ffcb6b; } .tok-com { color:#5c6478; font-style:italic; } .tok-num { color:#f78c6c; }
+  .tok-anno { color:#f07178; }
+
+  /* platform toggle demo */
+  .demo-toggle { display:inline-flex; padding:5px; gap:4px; background:var(--bg-soft); border:1px solid var(--border); border-radius:12px; margin-bottom:22px; }
+  .demo-toggle button {
+    font-family:inherit; font-size:13.5px; font-weight:700; cursor:pointer; border:none;
+    padding:9px 20px; border-radius:9px; background:transparent; color:var(--txt-dim); transition:all .25s; display:flex; align-items:center; gap:8px;
+  }
+  .demo-toggle button.active.a { background:rgba(61,220,132,.16); color:var(--android); }
+  .demo-toggle button.active.i { background:rgba(111,168,255,.16); color:var(--ios); }
+  .demo-toggle button.active.s { background:rgba(41,211,194,.16); color:var(--accent2); }
+  .demo-pane { display:none; } .demo-pane.active { display:block; animation:fade .4s; }
+  @keyframes fade { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+  /* migration timeline */
+  .timeline { position:relative; padding-left:38px; }
+  .timeline::before { content:""; position:absolute; left:13px; top:6px; bottom:6px; width:2px; background:linear-gradient(var(--accent),var(--accent2)); }
+  .tl-item { position:relative; padding-bottom:34px; }
+  .tl-item:last-child { padding-bottom:0; }
+  .tl-item .node { position:absolute; left:-38px; top:2px; width:28px; height:28px; border-radius:50%; background:var(--bg); border:2px solid var(--accent); display:grid; place-items:center; font-size:12px; font-weight:800; color:var(--accent); }
+  .tl-item h3 { margin-bottom:6px; }
+
+  /* before/after table */
+  table.cmp { width:100%; border-collapse:separate; border-spacing:0; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  table.cmp th, table.cmp td { padding:16px 20px; text-align:left; font-size:14.5px; border-bottom:1px solid var(--border); }
+  table.cmp thead th { background:rgba(255,255,255,.025); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--txt-faint); font-weight:700; }
+  table.cmp tbody tr:last-child td { border-bottom:none; }
+  table.cmp td:first-child { font-weight:600; }
+  table.cmp .old { color:#ff8585; }
+  table.cmp .new { color:var(--android); font-weight:600; }
+  table.cmp tbody tr:hover td { background:rgba(120,140,200,.04); }
+  @media (max-width:680px){ table.cmp th:nth-child(1){ display:none } }
+
+  /* impact pills */
+  .impact-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  @media (max-width:820px){ .impact-grid{ grid-template-columns:1fr 1fr; } }
+  @media (max-width:520px){ .impact-grid{ grid-template-columns:1fr; } }
+  .impact { padding:24px; border-radius:16px; border:1px solid var(--border); background:var(--panel); }
+  .impact .ic { font-size:24px; margin-bottom:12px; display:block; }
+  .impact h3 { font-size:1.05rem; margin-bottom:6px; }
+  .impact p { font-size:13.5px; color:var(--txt-dim); }
+
+  /* AI multiplier */
+  .ai-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:38px; }
+  @media (max-width:760px){ .ai-stats{ grid-template-columns:1fr 1fr; } }
+  .ai-stats > div {
+    padding:26px 22px; border-radius:18px; border:1px solid var(--border-strong);
+    background:linear-gradient(135deg, rgba(139,123,255,.12), rgba(41,211,194,.05));
+    font-size:2.4rem; font-weight:900; letter-spacing:-.04em; line-height:1;
+  }
+  .ai-stats > div b { background:linear-gradient(110deg,var(--android),var(--accent2),var(--ios)); -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent; }
+  .ai-stats > div span { display:block; font-size:12.5px; font-weight:500; color:var(--txt-faint); letter-spacing:0; margin-top:10px; }
+  .tool { padding:24px; border-radius:16px; border:1px solid var(--border); background:var(--panel); backdrop-filter:blur(12px); transition:transform .3s, border-color .3s; }
+  .tool:hover{ transform:translateY(-4px); border-color:var(--border-strong); }
+  .tool .ic{ font-size:24px; }
+  .tool .tag{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--accent2); margin:12px 0 7px; display:inline-block; padding:3px 9px; border-radius:7px; background:rgba(41,211,194,.08); border:1px solid rgba(41,211,194,.2); }
+  .tool h3{ font-size:1.02rem; margin-bottom:6px; }
+  .tool p{ font-size:13.5px; color:var(--txt-dim); }
+
+  /* challenges */
+  .chal { display:flex; gap:14px; align-items:flex-start; padding:18px 20px; border:1px solid var(--border); border-radius:14px; background:var(--panel); }
+  .chal .n { flex:none; font-family:var(--mono); font-size:13px; font-weight:700; color:var(--warn); width:26px; }
+  .chal h3 { font-size:1rem; margin-bottom:4px; }
+  .chal p { font-size:13.5px; color:var(--txt-dim); }
+
+  /* closing */
+  #close { text-align:center; padding:140px 30px; }
+  #close .quote { font-size:clamp(1.8rem,4.5vw,3.2rem); font-weight:800; letter-spacing:-.03em; line-height:1.15; max-width:880px; margin:0 auto 30px; }
+  #close .quote .hl { background:linear-gradient(110deg,var(--android),var(--accent2),var(--ios)); -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent; }
+  #close .sig { color:var(--txt-faint); font-size:14px; }
+
+  footer { padding:40px 30px; border-top:1px solid var(--border); text-align:center; color:var(--txt-faint); font-size:13px; }
+  .chip-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .chip { font-family:var(--mono); font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid var(--border); color:var(--txt-dim); background:rgba(255,255,255,.02); }
+  .chip.hot { color:var(--accent2); border-color:rgba(41,211,194,.3); background:rgba(41,211,194,.06); }
+  .section-head { margin-bottom:48px; max-width:720px; }
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+<div class="grid-bg"></div>
+
+<nav>
+  <div class="brand"><img class="logo-mark" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJAAAACQCAYAAADnRuK4AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyZpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNi1jMDY3IDc5LjE1Nzc0NywgMjAxNS8wMy8zMC0yMzo0MDo0MiAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTUgKFdpbmRvd3MpIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOkNBQzEyNDVFOUMzNzExRTZCNjhEQjE0OThBMENEMEQwIiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOkNBQzEyNDVGOUMzNzExRTZCNjhEQjE0OThBMENEMEQwIj4gPHhtcE1NOkRlcml2ZWRGcm9tIHN0UmVmOmluc3RhbmNlSUQ9InhtcC5paWQ6Q0FDMTI0NUM5QzM3MTFFNkI2OERCMTQ5OEEwQ0QwRDAiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6Q0FDMTI0NUQ5QzM3MTFFNkI2OERCMTQ5OEEwQ0QwRDAiLz4gPC9yZGY6RGVzY3JpcHRpb24+IDwvcmRmOlJERj4gPC94OnhtcG1ldGE+IDw/eHBhY2tldCBlbmQ9InIiPz6+p8z9AAARuElEQVR42uyd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" alt="Bizom" /> Bizom</div>
+  <div class="links">
+    <a href="#problem">Problem</a>
+    <a href="#why">Why CMP</a>
+    <a href="#arch">Architecture</a>
+    <a href="#components">Components</a>
+    <a href="#migration">Migration</a>
+    <a href="#impact">Impact</a>
+    <a href="#ai">AI Multiplier</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="wrap">
+    <div class="tag reveal in"><span class="pulse"></span> R&amp;D Session · Architecture Evolution</div>
+    <h1 class="reveal in">From <span class="gradient-text">shared logic</span><br/>to <span class="gradient-text">shared product</span>.</h1>
+    <p class="sub reveal in d1">Our KMM stack shared business logic but rebuilt every screen twice. With <b>Compose Multiplatform</b>, one composable now renders natively on <b>Android</b> and <b>iOS</b> — same UI, same state, same behavior.</p>
+    <div class="hero-stats reveal in d2">
+      <div class="stat"><div class="v g">1×</div><div class="l">UI implementation</div></div>
+      <div class="stat"><div class="v b">2</div><div class="l">platforms, one codebase</div></div>
+      <div class="stat"><div class="v">23+</div><div class="l">localizations shared</div></div>
+      <div class="stat"><div class="v b">4</div><div class="l">engineers · 1 quarter · AI-driven</div></div>
+    </div>
+    <div class="scroll-hint reveal in d3"><span class="mouse"></span> Scroll to walk the evolution</div>
+  </div>
+</section>
+
+<!-- 1. PROBLEM -->
+<section id="problem">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">01</span> The Problem</div>
+      <h2>KMM shared the brain.<br/>It never shared the face.</h2>
+      <p class="lead">Kotlin Multiplatform unified our business logic — networking, models, database, view models. But the UI layer stayed split. Every feature shipped twice.</p>
+    </div>
+
+    <div class="split">
+      <div class="card reveal">
+        <h3 style="margin-bottom:18px">Old KMM topology</h3>
+        <div class="diagram">
+          <div class="layer logic">Shared Business Logic<div class="sub">ViewModels · Network · DB · Models</div></div>
+          <div class="connector"></div>
+          <div class="branch-line">
+            <div class="platform-chip a">🤖 Android UI</div>
+            <div class="platform-chip i">🍎 iOS UI</div>
+          </div>
+          <div style="margin-top:10px; font-size:12.5px; color:var(--txt-faint); text-align:center; max-width:380px;">Jetpack Compose / XML &nbsp;·&nbsp; SwiftUI / UIKit<br/>— built and maintained separately —</div>
+        </div>
+      </div>
+
+      <div class="card reveal d1">
+        <h3 style="margin-bottom:6px">What it cost us</h3>
+        <ul class="pain-list">
+          <li><span class="ic bad">✕</span> Every screen implemented twice — once per platform</li>
+          <li><span class="ic bad">✕</span> Same feature, two codebases — a bug fixed on Android had to be re-found and re-fixed in entirely separate iOS code</li>
+          <li><span class="ic bad">✕</span> Platform drift: spacing, typography, state handling diverged</li>
+          <li><span class="ic bad">✕</span> Double the QA surface, double the bug reports</li>
+          <li><span class="ic bad">✕</span> Slower releases — iOS waits on its own re-implementation</li>
+          <li><span class="ic bad">✕</span> One 11-person team carried both apps — every cross-platform task or bug hit them twice</li>
+        </ul>
+        <p style="margin-top:20px; padding:14px 16px; border-left:3px solid var(--warn); background:rgba(255,179,71,.07); border-radius:0 10px 10px 0; font-size:14.5px; color:var(--txt-dim)">“Even though logic was shared, <b style="color:var(--txt)">feature delivery was still duplicated.</b>”</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. WHY CMP -->
+<section id="why">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">02</span> Why Compose Multiplatform</div>
+      <h2>Build the screen once.<br/>Render it everywhere.</h2>
+      <p class="lead">CMP lifts the share boundary above the UI. The same <code style="font-family:var(--mono);color:var(--accent2)">@Composable</code> renders on both platforms — so state and rendering are now both shared.</p>
+    </div>
+
+    <div class="grid3">
+      <div class="card reveal"><h3 style="margin-bottom:8px">🧩 Single UI codebase</h3><p class="muted" style="font-size:14px">One composable, one design system, one behavior — running on Android &amp; iOS.</p></div>
+      <div class="card reveal d1"><h3 style="margin-bottom:8px">⚡ Faster delivery</h3><p class="muted" style="font-size:14px">No iOS re-implementation. Build once, deploy to both.</p></div>
+      <div class="card reveal d2"><h3 style="margin-bottom:8px">🎯 UI consistency</h3><p class="muted" style="font-size:14px">Same spacing, typography, animations and state — zero drift.</p></div>
+      <div class="card reveal"><h3 style="margin-bottom:8px">🎨 Shared design system</h3><p class="muted" style="font-size:14px"><code style="font-family:var(--mono);color:var(--accent2);font-size:12px">:designsystem</code> theme + components consumed by every platform.</p></div>
+      <div class="card reveal d1"><h3 style="margin-bottom:8px">🔧 Fix once</h3><p class="muted" style="font-size:14px">A bug fix lands on Android <i>and</i> iOS in the same commit.</p></div>
+      <div class="card reveal d2"><h3 style="margin-bottom:8px">🔗 Shared state + rendering</h3><p class="muted" style="font-size:14px">The big jump from KMM: not just shared state — shared rendering too.</p></div>
+    </div>
+
+    <div class="arch-compare" style="margin-top:24px">
+      <div class="arch-box old reveal">
+        <div class="tagline">● Old KMM — share boundary below UI</div>
+        <div class="diagram">
+          <div class="layer logic" style="max-width:100%">Shared Logic</div>
+          <div class="connector"></div>
+          <div class="branch-line"><div class="platform-chip a">Android UI</div><div class="platform-chip i">iOS UI</div></div>
+        </div>
+      </div>
+      <div class="arch-box new reveal d1">
+        <div class="tagline">● CMP — share boundary above UI</div>
+        <div class="diagram">
+          <div class="layer ui" style="max-width:100%">Shared Composable UI</div>
+          <div class="connector"></div>
+          <div class="layer logic" style="max-width:100%">Shared Logic</div>
+          <div style="margin-top:10px;display:flex;gap:10px"><div class="platform-chip a" style="font-size:12px">🤖 renders</div><div class="platform-chip i" style="font-size:12px">🍎 renders</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. ARCHITECTURE -->
+<section id="arch">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">03</span> Architecture Overview</div>
+      <h2>One shared core.<br/>Two integration paths.</h2>
+      <p class="lead">Both platforms converge on the same <b>commonMain</b> composables + logic. They differ in <i>how they mount it</i>: Android already speaks Compose, so it needs only thin <b>Wrappers</b>. iOS speaks Swift / UIKit, so it needs a bridge — <b>CMPHost → UiController → CMPUI</b>.</p>
+    </div>
+
+    <div class="card reveal" style="padding:44px 28px">
+      <!-- shared core on top -->
+      <div class="layer ui" style="max-width:660px; margin:0 auto;">Shared Compose UI + Logic <span style="color:var(--txt-faint);font-weight:500">(commonMain)</span><div class="sub">Composable screens · ViewModels · Repositories · Network · DB · Res resources</div></div>
+
+      <!-- fork down to two platforms -->
+      <div class="split-down"></div>
+      <div class="split-fork"><span class="bar"></span><span class="dL"></span><span class="dR"></span></div>
+
+      <!-- two asymmetric paths -->
+      <div class="arch-branch">
+        <!-- ANDROID -->
+        <div class="branch-col android">
+          <div class="platform-chip a">🤖 Android · already Compose-native</div>
+          <div class="layer host" style="border-color:rgba(61,220,132,.4); background:linear-gradient(135deg,rgba(61,220,132,.14),rgba(61,220,132,.03))">Wrappers<div class="sub">@Destination composable wrappers mount the shared UI directly &amp; wire native callbacks — Google / Microsoft sign-in, Compose Destinations navigation</div></div>
+          <p style="margin-top:14px;font-size:12.5px;color:var(--txt-faint);text-align:center">No bridge needed — Android renders Compose natively.</p>
+        </div>
+
+        <!-- iOS -->
+        <div class="branch-col ios">
+          <div class="platform-chip i">🍎 iOS · Swift / UIKit bridge</div>
+          <div class="layer host">CMPHost<div class="sub">ComposeUIViewController — rendering entry point &amp; lifecycle</div></div>
+          <div class="connector"></div>
+          <div class="layer ctrl">UiController<div class="sub">orchestration · state · platform callbacks · iOS keyboard config</div></div>
+          <div class="connector"></div>
+          <div class="layer ui">CMPUI<div class="sub">renders the shared composable inside the UIViewController</div></div>
+        </div>
+      </div>
+
+      <!-- capability wrappers (both platforms) -->
+      <div style="margin-top:30px; display:flex; justify-content:center;">
+        <div style="display:flex; gap:14px; align-items:center; padding:14px 22px; border:1px dashed var(--border-strong); border-radius:14px; background:rgba(255,179,71,.04); flex-wrap:wrap; justify-content:center">
+          <span style="font-weight:700; color:var(--warn)">⊕ expect / actual</span>
+          <span style="color:var(--txt-faint); font-size:13.5px">native capabilities both paths share — camera · permissions · file picker · location · analytics · sync</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. COMPONENTS DEEP DIVE -->
+<section id="components">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">04</span> The Building Blocks</div>
+      <h2>How the framework actually works.</h2>
+      <p class="lead">Real components from the Bizom codebase — not abstractions on a slide.</p>
+    </div>
+
+    <!-- CMPHost -->
+    <div class="comp reveal">
+      <div class="comp-side">
+        <span class="comp-badge"><span class="d" style="background:var(--accent)"></span> CMPHost</span>
+        <h3>The platform entry point</h3>
+        <p class="muted" style="font-size:14px;margin-top:8px">On <b style="color:var(--ios)">iOS</b>, CMPHost is the bridge — a <code style="font-family:var(--mono);font-size:12px">ComposeUIViewController</code> that hosts the Compose screen and integrates the UIKit lifecycle. On <b style="color:var(--android)">Android</b>, the Activity's own <code style="font-family:var(--mono);font-size:12px">setContent</code> plays this role and screens mount through Wrappers.</p>
+      </div>
+      <div>
+        <div class="code">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">MainActivity.kt</span><span class="plat a">Android</span></div>
+<pre><code><span class="tok-fn">setContent</span> {
+    <span class="tok-key">val</span> navController = <span class="tok-fn">rememberNavController</span>()
+    <span class="tok-fn">BizomTheme</span> {
+        <span class="tok-fn">DestinationsNavHost</span>(
+            navGraph = MainNavGraph,
+            navController = navController,
+            start = <span class="tok-fn">FullScreenControllerDestination</span>(),
+        )
+    }
+}</code></pre>
+        </div>
+        <div class="code" style="margin-top:16px">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">LoginViewController.kt</span><span class="plat i">iOS</span></div>
+<pre><code><span class="tok-key">fun</span> <span class="tok-fn">LoginViewController</span>(
+    logger: Logger,
+    viewModel: LoginViewModel,
+    onAction: (LoginAction) -&gt; Unit
+) = <span class="tok-fn">ComposeUIViewController</span> {
+    <span class="tok-fn">LoginScreenUI</span>(viewModel, logger, onAction = onAction)
+}</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- UiController -->
+    <div class="comp reveal">
+      <div class="comp-side">
+        <span class="comp-badge"><span class="d" style="background:var(--warn)"></span> UiController</span>
+        <h3>The traffic controller</h3>
+        <p class="muted" style="font-size:14px;margin-top:8px">Sits between native and CMPUI. Handles navigation, state orchestration, platform callbacks and DI wiring — and configures platform quirks like iOS keyboard focus.</p>
+      </div>
+      <div>
+        <div class="code">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">RequirePasswordScreenUIController.kt</span><span class="plat i">iOS</span></div>
+<pre><code><span class="tok-key">fun</span> <span class="tok-fn">RequirePasswordScreenUIController</span>(
+    viewModel: LoginViewModel,
+    userName: String,
+    userEnvironment: Int,
+    navigateNext: () -&gt; Unit
+) = <span class="tok-fn">ComposeUIViewController</span>(configure = {
+    onFocusBehavior = OnFocusBehavior.FocusableAboveKeyboard  <span class="tok-com">// iOS keyboard quirk</span>
+}) {
+    <span class="tok-fn">RequirePasswordSharedScreen</span>(
+        viewModel, userName, userEnvironment, navigateNext
+    )
+}</code></pre>
+        </div>
+        <p style="margin-top:14px;font-size:14px;color:var(--txt-dim)">If <b style="color:var(--accent2)">CMPUI is the screen</b>, the <b style="color:var(--warn)">UiController is the traffic controller</b> routing native events into it.</p>
+      </div>
+    </div>
+
+    <!-- CMPUI -->
+    <div class="comp reveal">
+      <div class="comp-side">
+        <span class="comp-badge"><span class="d" style="background:var(--accent2)"></span> CMPUI</span>
+        <h3>The shared screen itself</h3>
+        <p class="muted" style="font-size:14px;margin-top:8px">The actual composable — written once in <code style="font-family:var(--mono);font-size:12px">commonMain</code>. Emits platform-agnostic <code style="font-family:var(--mono);font-size:12px">LoginAction</code>s that each host interprets natively.</p>
+      </div>
+      <div>
+        <div class="code">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">shared/commonMain/.../login/LoginScreenUI.kt</span><span class="plat s">commonMain</span></div>
+<pre><code><span class="tok-anno">@Composable</span>
+<span class="tok-key">fun</span> <span class="tok-fn">LoginScreenUI</span>(
+    viewModel: LoginViewModel,
+    log: Logger,
+    onAction: (LoginAction) -&gt; Unit
+) {
+    Image(<span class="tok-fn">painterResource</span>(Res.drawable.bizom_logo_banner), <span class="tok-str">""</span>)
+    Text(<span class="tok-fn">stringResource</span>(Res.string.login))
+    <span class="tok-com">// one screen → renders on Android AND iOS</span>
+}</code></pre>
+        </div>
+        <div class="code" style="margin-top:16px">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">login/LoginAction.kt</span><span class="plat s">commonMain</span></div>
+<pre><code><span class="tok-key">sealed class</span> <span class="tok-type">LoginAction</span> {
+    <span class="tok-key">data class</span> <span class="tok-type">OnGoogleLogin</span>(<span class="tok-key">val</span> environment: Int) : LoginAction()
+    <span class="tok-key">data class</span> <span class="tok-type">OnMicrosoftLogin</span>(<span class="tok-key">val</span> environment: Int) : LoginAction()
+    <span class="tok-key">object</span> <span class="tok-type">NavigateToInitialSyncScreen</span> : LoginAction()
+}</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wrappers -->
+    <div class="comp reveal">
+      <div class="comp-side">
+        <span class="comp-badge"><span class="d" style="background:#ff8585"></span> Wrappers</span>
+        <h3>Native power, common interface</h3>
+        <p class="muted" style="font-size:14px;margin-top:8px">Platform capabilities abstracted behind one <code style="font-family:var(--mono);font-size:12px">expect</code> API with two <code style="font-family:var(--mono);font-size:12px">actual</code> implementations. The shared UI never knows which platform it's on.</p>
+      </div>
+      <div>
+        <div class="grid2">
+          <div class="code">
+            <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">PlatformNew.android.kt</span><span class="plat a">Android</span></div>
+<pre><code><span class="tok-key">actual class</span> <span class="tok-type">PlatformNew</span> : KoinComponent {
+  <span class="tok-key">val</span> context: Context <span class="tok-key">by</span> inject()
+  <span class="tok-key">actual fun</span> <span class="tok-fn">syncThroughWorkManager</span>() =
+    WorkManagerUtil.<span class="tok-fn">syncData</span>(context)
+}</code></pre>
+          </div>
+          <div class="code">
+            <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">PlatformNew.ios.kt</span><span class="plat i">iOS</span></div>
+<pre><code><span class="tok-key">actual class</span> <span class="tok-type">PlatformNew</span> {
+  <span class="tok-key">actual fun</span> <span class="tok-fn">syncThroughWorkManager</span>() =
+    SyncManagerIOS.<span class="tok-fn">syncIosData</span>()
+}</code></pre>
+          </div>
+        </div>
+        <div class="chip-row" style="margin-top:16px">
+          <span class="chip">ScreenCaptureController</span>
+          <span class="chip">KmpShareUtils</span>
+          <span class="chip">AudioRecorderSetup</span>
+          <span class="chip hot">:kmpLocation</span>
+          <span class="chip">Permissions</span>
+          <span class="chip">Analytics</span>
+        </div>
+        <p style="margin-top:16px;font-size:14px;color:var(--txt-dim)">“Wrappers let us keep the UI <b style="color:var(--txt)">fully shared</b> without losing access to <b style="color:var(--txt)">native capabilities.</b>”</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ONE COMPOSABLE, BOTH PLATFORMS -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="card reveal" style="padding:36px 30px">
+      <h2 style="font-size:1.7rem">One composable. Two hosts. Same screen.</h2>
+      <p class="muted" style="margin-bottom:8px">The exact same <code style="font-family:var(--mono);color:var(--accent2)">LoginScreenUI</code> mounts in both shells — only the host wrapper differs.</p>
+      <div class="demo-toggle" id="demoToggle">
+        <button class="a active" data-pane="android">🤖 Android</button>
+        <button class="i" data-pane="ios">🍎 iOS</button>
+        <button class="s" data-pane="shared">🧩 Shared</button>
+      </div>
+
+      <div class="demo-pane active" data-pane="android">
+        <div class="code">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">app/.../ui/login/LoginScreenWrapper.kt</span><span class="plat a">Android</span></div>
+<pre><code><span class="tok-anno">@Destination&lt;MainGraph&gt;</span>
+<span class="tok-anno">@Composable</span>
+<span class="tok-key">fun</span> <span class="tok-fn">LoginScreenWrapper</span>(navController: DestinationsNavigator, viewModel: LoginViewModel, ...) {
+    <span class="tok-key">val</span> launcher = <span class="tok-fn">rememberLauncherForActivityResult</span>(StartActivityForResult()) { <span class="tok-com">/* Google Sign-In */</span> }
+    <span class="tok-fn">LoginScreenUI</span>(viewModel, log, onAction = { action -&gt;
+        <span class="tok-key">when</span> (action) {
+            <span class="tok-key">is</span> LoginAction.OnGoogleLogin -&gt; launcher.<span class="tok-fn">launch</span>(...)
+            <span class="tok-key">is</span> LoginAction.NavigateToInitialSyncScreen -&gt; navController.<span class="tok-fn">navigate</span>(InitialSyncScreenWrapperDestination)
+        }
+    })
+}</code></pre>
+        </div>
+      </div>
+
+      <div class="demo-pane" data-pane="ios">
+        <div class="code">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">ios/.../logincmp/LoginComposeScreenCmpUI.swift</span><span class="plat i">iOS · Swift</span></div>
+<pre><code><span class="tok-key">struct</span> <span class="tok-type">LoginComposeView</span>: <span class="tok-type">UIViewControllerRepresentable</span> {
+    <span class="tok-key">var</span> viewModel: LoginViewModel
+    <span class="tok-key">var</span> onAction: (LoginAction) -&gt; Void
+
+    <span class="tok-key">func</span> <span class="tok-fn">makeUIViewController</span>(context: Context) -&gt; UIViewController {
+        LoginViewControllerKt.<span class="tok-fn">LoginViewController</span>(
+            logger: koin.<span class="tok-fn">loggerWithTag</span>(tag: <span class="tok-str">"ViewController"</span>),
+            viewModel: viewModel, onAction: onAction
+        )
+    }
+}</code></pre>
+        </div>
+      </div>
+
+      <div class="demo-pane" data-pane="shared">
+        <div class="code">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">shared/commonMain/.../login/LoginScreenUI.kt</span><span class="plat s">commonMain · the source of truth</span></div>
+<pre><code><span class="tok-anno">@Composable</span>
+<span class="tok-key">fun</span> <span class="tok-fn">LoginScreenUI</span>(viewModel: LoginViewModel, log: Logger, onAction: (LoginAction) -&gt; Unit) {
+    <span class="tok-key">val</span> state <span class="tok-key">by</span> viewModel.uiState.<span class="tok-fn">collectAsState</span>()
+    Column {
+        Image(<span class="tok-fn">painterResource</span>(Res.drawable.bizom_logo_banner), <span class="tok-str">""</span>)
+        Text(<span class="tok-fn">stringResource</span>(Res.string.login))
+        Button(onClick = { onAction(LoginAction.<span class="tok-fn">OnGoogleLogin</span>(env)) }) { ... }
+    }
+}</code></pre>
+        </div>
+        <p style="margin-top:14px;font-size:13.5px;color:var(--txt-faint);text-align:center">↑ Both wrappers above mount <i>this</i> exact function.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- R -> Res -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="split">
+      <div class="reveal">
+        <div class="eyebrow"><span class="num">04b</span> Resources</div>
+        <h2 style="font-size:1.9rem">R → Res</h2>
+        <p class="muted">Android's generated <code style="font-family:var(--mono);color:var(--accent2)">R</code> class doesn't exist on iOS. We migrated to Compose Resources' multiplatform <code style="font-family:var(--mono);color:var(--accent2)">Res</code> — one resource API, <b style="color:var(--txt)">23+ localizations</b> and <b style="color:var(--txt)">368 drawables</b> shared across both platforms.</p>
+        <div class="chip-row" style="margin-top:18px">
+          <span class="chip hot">Res.string</span><span class="chip hot">Res.drawable</span><span class="chip">Res.font</span><span class="chip">Res.plurals</span><span class="chip">values-hi · bn · ml · …</span>
+        </div>
+      </div>
+      <div class="reveal d1">
+        <div class="code">
+          <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">migration</span><span class="plat s">commonMain</span></div>
+<pre><code><span class="tok-com">// before — Android only</span>
+context.<span class="tok-fn">getString</span>(R.string.login)
+<span class="tok-fn">painterResource</span>(R.drawable.bizom_logo)
+
+<span class="tok-com">// after — Android + iOS</span>
+<span class="tok-fn">stringResource</span>(Res.string.login)
+<span class="tok-fn">painterResource</span>(Res.drawable.bizom_logo_banner)</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. MIGRATION -->
+<section id="migration">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">05</span> Migration Strategy</div>
+      <h2>Incremental. Hybrid. Zero big-bang.</h2>
+      <p class="lead">We never froze the app for a rewrite. Native and CMP screens coexisted while we migrated feature by feature.</p>
+    </div>
+    <div class="timeline reveal">
+      <div class="tl-item">
+        <div class="node">1</div>
+        <h3>Feature-by-feature, not rewrite-everything</h3>
+        <p class="muted">Each screen migrated independently. The app stayed shippable the entire time.</p>
+      </div>
+      <div class="tl-item">
+        <div class="node">2</div>
+        <h3>Hybrid coexistence</h3>
+        <p class="muted">Some screens native, some CMP — both live in the same navigation flow. Practical engineering maturity over purity.</p>
+      </div>
+      <div class="tl-item">
+        <div class="node">3</div>
+        <h3>ComposeUIViewController embedding (iOS)</h3>
+        <p class="muted">Each migrated composable wrapped in a <code style="font-family:var(--mono);color:var(--accent2)">UIViewControllerRepresentable</code> and dropped into existing SwiftUI / UIKit navigation — no flow rewrite.</p>
+      </div>
+      <div class="tl-item">
+        <div class="node">4</div>
+        <h3>Wrappers backfilled as needed</h3>
+        <p class="muted">When a migrated screen needed camera/location/share, we added the <code style="font-family:var(--mono);color:var(--accent2)">expect/actual</code> wrapper — keeping UI shared without losing native reach.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BEFORE / AFTER -->
+<section style="padding-top:0">
+  <div class="wrap reveal">
+    <h2 style="margin-bottom:24px">Old KMM vs CMP — at a glance</h2>
+    <table class="cmp">
+      <thead><tr><th>Area</th><th>Old KMM</th><th>Compose Multiplatform</th></tr></thead>
+      <tbody>
+        <tr><td>Business logic</td><td class="muted">Shared</td><td class="new">Shared</td></tr>
+        <tr><td>UI layer</td><td class="old">Separate (2×)</td><td class="new">Shared (1×)</td></tr>
+        <tr><td>Feature development</td><td class="old">Duplicated</td><td class="new">Single implementation</td></tr>
+        <tr><td>Design consistency</td><td class="old">Manual, drifts</td><td class="new">Built-in</td></tr>
+        <tr><td>Resources (R → Res)</td><td class="old">Per-platform</td><td class="new">Shared · 23+ locales</td></tr>
+        <tr><td>Maintenance</td><td class="old">Higher (2 codebases)</td><td class="new">Lower (fix once)</td></tr>
+        <tr><td>Release speed</td><td class="old">Slower</td><td class="new">Faster</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- FIX ONCE, NOT TWICE -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow">Where it bit hardest</div>
+      <h2 style="font-size:1.9rem">The same feature. Two codebases.<br/>One bug, fixed twice.</h2>
+      <p class="lead">Plenty of features looked identical on Android and iOS — but ran on entirely separate code. A single bug in shared behavior meant two investigations, two fixes, two reviews. CMP collapsed that.</p>
+    </div>
+    <div class="arch-compare">
+      <div class="arch-box old reveal">
+        <div class="tagline">● Old KMM — fix the same bug twice</div>
+        <ul class="pain-list">
+          <li><span class="ic bad">1</span> Bug reported in a feature</li>
+          <li><span class="ic bad">2</span> Reproduce on Android → fix in Android UI code</li>
+          <li><span class="ic bad">3</span> Reproduce again on iOS → fix in <b style="color:#ff8585">separate</b> iOS UI code</li>
+          <li><span class="ic bad">4</span> Two PRs · two reviews · two QA passes</li>
+          <li><span class="ic bad">✕</span> Easy to fix one side and forget the other — platforms drift</li>
+        </ul>
+      </div>
+      <div class="arch-box new reveal d1">
+        <div class="tagline">● CMP — fix once, both platforms get it</div>
+        <ul class="pain-list">
+          <li><span class="ic good">1</span> Bug reported in a feature</li>
+          <li><span class="ic good">2</span> Fix once in the shared composable</li>
+          <li><span class="ic good">3</span> Lands on Android <b style="color:var(--android)">and</b> iOS in the same commit</li>
+          <li><span class="ic good">4</span> One PR · one review · one QA pass</li>
+          <li><span class="ic good">✓</span> Platforms <b style="color:var(--android)">cannot</b> diverge — same code, same behavior</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:24px;text-align:center;font-size:1.05rem;color:var(--txt-dim)" class="reveal">Bug-fixing went from <b style="color:#ff8585">2× the work + drift risk</b> → <b style="color:var(--android)">one fix, guaranteed consistent.</b></p>
+  </div>
+</section>
+
+<!-- 6. IMPACT -->
+<section id="impact">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">06</span> Engineering &amp; Business Impact</div>
+      <h2>What the architecture buys us.</h2>
+    </div>
+    <div class="impact-grid">
+      <div class="impact reveal"><span class="ic">⚡</span><h3>Faster releases</h3><p>One implementation ships to both stores. iOS no longer trails Android.</p></div>
+      <div class="impact reveal d1"><span class="ic">🔁</span><h3>No duplicate effort</h3><p>Features built once, scaled to both platforms automatically.</p></div>
+      <div class="impact reveal d2"><span class="ic">🧑‍🤝‍🧑</span><h3>One team, unburdened</h3><p>The same 11-person crew no longer builds every task twice — one shared UI, half the load.</p></div>
+      <div class="impact reveal"><span class="ic">🩹</span><h3>Fix once, not twice</h3><p>A bug in shared UI is fixed in one place — both platforms get it in the same commit. No re-finding the same bug in separate iOS code.</p></div>
+      <div class="impact reveal d1"><span class="ic">🚀</span><h3>Easier onboarding</h3><p>New engineers learn one UI stack, not two.</p></div>
+      <div class="impact reveal d2"><span class="ic">📐</span><h3>Built-in consistency</h3><p>Shared design system removes platform drift by construction.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6b. AI MULTIPLIER -->
+<section id="ai">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">07</span> The Multiplier</div>
+      <h2>One team of 11.<br/>Migrated by <span class="gradient-text">5</span>, in <span class="gradient-text">one quarter</span>.</h2>
+      <p class="lead">BizomNext was never two teams — it's a single 11-person crew owning both apps. Pre-CMP, every cross-platform task hit them twice. The migration itself? <b>4 engineers</b>, <b>one quarter</b> — because Claude Code and an AI tooling stack did the heavy lifting.</p>
+    </div>
+
+    <div class="ai-stats reveal">
+      <div><b>11</b><span>engineers own BizomNext (both apps)</span></div>
+      <div><b>5</b><span>ran the entire CMP migration</span></div>
+      <div><b>1Q</b><span>start → shipped to both stores</span></div>
+      <div><b>2× → 1×</b><span>per-feature effort collapsed</span></div>
+    </div>
+
+    <h3 class="reveal" style="margin-bottom:6px">How 5 engineers moved like 10</h3>
+    <p class="muted reveal" style="margin-bottom:24px;font-size:14.5px">The AI stack didn't just write code — it cut token cost and kept context across months of migration, so a small team could sustain a huge sweep.</p>
+
+    <div class="grid3">
+      <div class="tool reveal"><span class="ic">🤖</span><span class="tag">Claude Code</span><h3>Agentic pair-engineer</h3><p>Drove file edits, refactors and whole-feature ports end-to-end — Kotlin, Compose and Swift bridges alike.</p></div>
+      <div class="tool reveal d1"><span class="ic">🧠</span><span class="tag">claude-mem</span><h3>Persistent memory</h3><p>Migration decisions, patterns and gotchas recalled across sessions — no re-explaining context every morning. ~92% token savings on recall.</p></div>
+      <div class="tool reveal d2"><span class="ic">🕸️</span><span class="tag">code-review graph</span><h3>Automated PR review</h3><p>Bitbucket review agent mapped each change's blast-radius and flagged regressions before merge — review at machine speed.</p></div>
+      <div class="tool reveal"><span class="ic">🪨</span><span class="tag">caveman mode</span><h3>Token-lean output</h3><p>Terse, fluff-free responses — same technical substance, far fewer tokens per turn. More migration per budget.</p></div>
+      <div class="tool reveal d1"><span class="ic">🧩</span><span class="tag">skills</span><h3>Reusable playbooks</h3><p>Repeatable migration recipes — R→Res, ViewModel string migration, screen porting — invoked on demand for consistency.</p></div>
+      <div class="tool reveal d2"><span class="ic">⚡</span><span class="tag">subagents · workflows</span><h3>Parallel fan-out</h3><p>Bulk sweeps ran across many agents at once — 29 ViewModels and 368 drawables migrated in parallel, not one-by-one.</p></div>
+    </div>
+
+    <p style="margin-top:26px;text-align:center;font-size:1.05rem;color:var(--txt-dim)" class="reveal"><b style="color:var(--txt)">claude-mem + caveman + scoped agents = less token burn, more throughput</b> — the economics that made a 4-person, single-quarter migration possible.</p>
+  </div>
+</section>
+
+<!-- 7. CHALLENGES -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow">Keeping it real</div>
+      <h2 style="font-size:1.9rem">Challenges we faced.</h2>
+      <p class="lead">A migration this deep isn't free. Where it got hard:</p>
+    </div>
+    <div class="grid2">
+      <div class="chal reveal"><span class="n">01</span><div><h3>iOS interoperability</h3><p>Bridging Kotlin composables into Swift via ComposeUIViewController + callback view models.</p></div></div>
+      <div class="chal reveal d1"><span class="n">02</span><div><h3>Native lifecycle handling</h3><p>Reconciling Compose lifecycle with UIViewController and Activity lifecycles.</p></div></div>
+      <div class="chal reveal"><span class="n">03</span><div><h3>Performance tuning</h3><p>Keeping Compose-on-iOS render and scroll performance native-grade.</p></div></div>
+      <div class="chal reveal d1"><span class="n">04</span><div><h3>Resource management</h3><p>Migrating R → Res across 368 drawables and 23+ localizations.</p></div></div>
+      <div class="chal reveal"><span class="n">05</span><div><h3>Platform-specific wrappers</h3><p>Designing clean expect/actual seams for camera, location, share, sync.</p></div></div>
+      <div class="chal reveal d1"><span class="n">06</span><div><h3>Navigation + gradual migration</h3><p>Hybrid flows where native and CMP screens share one navigation graph.</p></div></div>
+    </div>
+    <p style="margin-top:26px;text-align:center;font-size:1.05rem;color:var(--txt-dim)" class="reveal">“But once the architecture stabilized, <b style="color:var(--txt)">feature velocity improved significantly.</b>”</p>
+  </div>
+</section>
+
+<!-- CLOSING -->
+<section id="close">
+  <div class="wrap">
+    <p class="quote reveal">KMM let us share <span class="hl">logic</span> across platform.<br/>Compose Multiplatform let us share <span class="hl">the product itself</span> across platform.</p>
+    <p class="sig reveal d1">From cross-platform business logic → truly shared user-experience development.</p>
+  </div>
+</section>
+
+<footer>
+  <img class="footer-logo" src="data:image/png;base64,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" alt="Bizom — business on the move" /><br/>
+  Kotlin Multiplatform + Compose Multiplatform · R&amp;D Session 2026
+  <div class="chip-row" style="justify-content:center;margin-top:16px">
+    <span class="chip">:app</span><span class="chip">:shared</span><span class="chip">:designsystem</span><span class="chip">:shared-vm</span><span class="chip">:shared-network</span><span class="chip">:shared-repo</span><span class="chip">:shared-db</span><span class="chip">:shared-model</span><span class="chip">:kmpLocation</span>
+  </div>
+</footer>
+
+<script>
+  // scroll reveal
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal:not(.in)').forEach(el => io.observe(el));
+
+  // platform toggle demo
+  const toggle = document.getElementById('demoToggle');
+  toggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const pane = btn.dataset.pane;
+    document.querySelectorAll('.demo-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === pane));
+  });
+
+  // active nav highlight
+  const navLinks = [...document.querySelectorAll('nav .links a')];
+  const navIo = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(a => a.style.color = a.getAttribute('href') === '#' + e.target.id ? 'var(--txt)' : '');
+      }
+    });
+  }, { threshold: 0.4 });
+  ['problem','why','arch','components','migration','impact','ai'].forEach(id => { const s = document.getElementById(id); if (s) navIo.observe(s); });
+</script>
+</body>
+</html>

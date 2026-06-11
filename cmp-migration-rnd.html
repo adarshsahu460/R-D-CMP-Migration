@@ -202,6 +202,8 @@
   .split-fork .bar { position:absolute; top:0; left:0; right:0; height:2px; background:var(--border-strong); }
   .split-fork .dL, .split-fork .dR { position:absolute; top:0; width:2px; height:26px; background:var(--border-strong); }
   .split-fork .dL { left:0; } .split-fork .dR { right:0; }
+  .split-fork .dL::after, .split-fork .dR::after { content:"▼"; position:absolute; bottom:-13px; left:50%; transform:translateX(-50%); font-size:9px; color:var(--accent); }
+  .diagram .branch-line { width:60%; max-width:480px; }
   .arch-branch { display:flex; gap:24px; align-items:flex-start; }
   @media (max-width:760px){ .arch-branch{ flex-direction:column; align-items:stretch; } .split-fork{ display:none; } .split-down{ height:18px; } }
   .branch-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:0; padding:22px 16px 24px; border-radius:16px; border:1px solid var(--border); }
@@ -349,7 +351,7 @@
       <div class="stat"><div class="v g">1×</div><div class="l">UI implementation</div></div>
       <div class="stat"><div class="v b">2</div><div class="l">platforms, one codebase</div></div>
       <div class="stat"><div class="v">23+</div><div class="l">localizations shared</div></div>
-      <div class="stat"><div class="v b">4</div><div class="l">engineers · 1 quarter · AI-driven</div></div>
+      <div class="stat"><div class="v b">3</div><div class="l">engineers · 1 quarter · AI-driven</div></div>
     </div>
     <div class="scroll-hint reveal in d3"><span class="mouse"></span> Scroll to walk the evolution</div>
   </div>
@@ -369,7 +371,8 @@
         <h3 style="margin-bottom:18px">Old KMM topology</h3>
         <div class="diagram">
           <div class="layer logic">Shared Business Logic<div class="sub">ViewModels · Network · DB · Models</div></div>
-          <div class="connector"></div>
+          <div class="split-down"></div>
+          <div class="split-fork"><span class="bar"></span><span class="dL"></span><span class="dR"></span></div>
           <div class="branch-line">
             <div class="platform-chip a">🤖 Android UI</div>
             <div class="platform-chip i">🍎 iOS UI</div>
@@ -417,17 +420,20 @@
         <div class="tagline">● Old KMM — share boundary below UI</div>
         <div class="diagram">
           <div class="layer logic" style="max-width:100%">Shared Logic</div>
-          <div class="connector"></div>
+          <div class="split-down"></div>
+          <div class="split-fork"><span class="bar"></span><span class="dL"></span><span class="dR"></span></div>
           <div class="branch-line"><div class="platform-chip a">Android UI</div><div class="platform-chip i">iOS UI</div></div>
         </div>
       </div>
       <div class="arch-box new reveal d1">
         <div class="tagline">● CMP — share boundary above UI</div>
         <div class="diagram">
-          <div class="layer ui" style="max-width:100%">Shared Composable UI</div>
-          <div class="connector"></div>
           <div class="layer logic" style="max-width:100%">Shared Logic</div>
-          <div style="margin-top:10px;display:flex;gap:10px"><div class="platform-chip a" style="font-size:12px">🤖 renders</div><div class="platform-chip i" style="font-size:12px">🍎 renders</div></div>
+          <div class="connector"></div>
+          <div class="layer ui" style="max-width:100%">Shared Composable UI</div>
+          <div class="split-down"></div>
+          <div class="split-fork"><span class="bar"></span><span class="dL"></span><span class="dR"></span></div>
+          <div class="branch-line"><div class="platform-chip a" style="font-size:12px">🤖 Android renders</div><div class="platform-chip i" style="font-size:12px">🍎 iOS renders</div></div>
         </div>
       </div>
     </div>
@@ -440,7 +446,7 @@
     <div class="section-head reveal">
       <div class="eyebrow"><span class="num">03</span> Architecture Overview</div>
       <h2>One shared core.<br/>Two integration paths.</h2>
-      <p class="lead">Both platforms converge on the same <b>commonMain</b> composables + logic. They differ in <i>how they mount it</i>: Android already speaks Compose, so it needs only thin <b>Wrappers</b>. iOS speaks Swift / UIKit, so it needs a bridge — <b>CMPHost → UiController → CMPUI</b>.</p>
+      <p class="lead">Both platforms converge on the same <b>commonMain</b> composables + logic. They differ in <i>how they mount it</i>: Android already speaks Compose, so it needs only thin <b>Wrappers</b>. iOS speaks Swift / UIKit, so it needs a bridge — <b>UiController → CMPHost → CMPUI</b>.</p>
     </div>
 
     <div class="card reveal" style="padding:44px 28px">
@@ -463,9 +469,9 @@
         <!-- iOS -->
         <div class="branch-col ios">
           <div class="platform-chip i">🍎 iOS · Swift / UIKit bridge</div>
-          <div class="layer host">CMPHost<div class="sub">ComposeUIViewController — rendering entry point &amp; lifecycle</div></div>
-          <div class="connector"></div>
           <div class="layer ctrl">UiController<div class="sub">orchestration · state · platform callbacks · iOS keyboard config</div></div>
+          <div class="connector"></div>
+          <div class="layer host">CMPHost<div class="sub">ComposeUIViewController — rendering entry point &amp; lifecycle</div></div>
           <div class="connector"></div>
           <div class="layer ui">CMPUI<div class="sub">renders the shared composable inside the UIViewController</div></div>
         </div>
@@ -655,13 +661,32 @@
       <div class="demo-pane" data-pane="ios">
         <div class="code">
           <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">ios/.../logincmp/LoginComposeScreenCmpUI.swift</span><span class="plat i">iOS · Swift</span></div>
-<pre><code><span class="tok-key">struct</span> <span class="tok-type">LoginComposeView</span>: <span class="tok-type">UIViewControllerRepresentable</span> {
+<pre><code><span class="tok-com">// ── UiController (Kotlin) — orchestration layer ─────────────────</span>
+<span class="tok-key">fun</span> <span class="tok-fn">LoginScreenUIController</span>(
+    viewModel: LoginViewModel,
+    onAction: (LoginAction) -&gt; Unit
+) = <span class="tok-fn">ComposeUIViewController</span>(configure = {
+    onFocusBehavior = OnFocusBehavior.<span class="tok-fn">FocusableAboveKeyboard</span>
+}) {
+    <span class="tok-fn">LoginScreenUI</span>(viewModel, Logger.<span class="tok-fn">withTag</span>(<span class="tok-str">"Login"</span>), onAction = onAction)
+}
+
+<span class="tok-com">// ── CMPHost (Kotlin) — ComposeUIViewController entry point ───────</span>
+<span class="tok-key">fun</span> <span class="tok-fn">LoginViewController</span>(
+    logger: Logger,
+    viewModel: LoginViewModel,
+    onAction: (LoginAction) -&gt; Unit
+) = <span class="tok-fn">ComposeUIViewController</span> {
+    <span class="tok-fn">LoginScreenUI</span>(viewModel, logger, onAction = onAction)
+}
+
+<span class="tok-com">// ── CMPUI (Swift) — UIViewControllerRepresentable bridge ─────────</span>
+<span class="tok-key">struct</span> <span class="tok-type">LoginComposeScreenCmpUI</span>: <span class="tok-type">UIViewControllerRepresentable</span> {
     <span class="tok-key">var</span> viewModel: LoginViewModel
     <span class="tok-key">var</span> onAction: (LoginAction) -&gt; Void
 
     <span class="tok-key">func</span> <span class="tok-fn">makeUIViewController</span>(context: Context) -&gt; UIViewController {
-        LoginViewControllerKt.<span class="tok-fn">LoginViewController</span>(
-            logger: koin.<span class="tok-fn">loggerWithTag</span>(tag: <span class="tok-str">"ViewController"</span>),
+        LoginViewControllerKt.<span class="tok-fn">LoginScreenUIController</span>(
             viewModel: viewModel, onAction: onAction
         )
     }
@@ -802,6 +827,63 @@ context.<span class="tok-fn">getString</span>(R.string.login)
   </div>
 </section>
 
+<!-- 5b. WHO BENEFITS -->
+<section id="benefits">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div class="eyebrow"><span class="num">05b</span> Who Benefits</div>
+      <h2>Every team ships faster.<br/>Nobody carries the iOS tax.</h2>
+      <p class="lead">CMP doesn't just cut engineering effort — it ripples across QA, releases, product, and customer success. One codebase means one source of truth for everyone.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px" class="reveal">
+      <div class="card">
+        <div style="font-size:26px;margin-bottom:14px">🧪</div>
+        <h3 style="margin-bottom:8px;font-size:1.05rem">QA Team</h3>
+        <p class="muted" style="font-size:14px">One shared UI means one test suite covers both platforms. No re-running the same regression on iOS after an Android sign-off. Bug reproduced once, fixed once, verified once — on both.</p>
+        <ul style="margin-top:12px;padding-left:18px;font-size:13.5px;color:var(--txt-dim);line-height:1.8">
+          <li>Shared behaviour = shared test cases</li>
+          <li>No platform-specific regression drift</li>
+          <li>Faster sign-off cycles per feature</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div style="font-size:26px;margin-bottom:14px">🚀</div>
+        <h3 style="margin-bottom:8px;font-size:1.05rem">Release Manager</h3>
+        <p class="muted" style="font-size:14px">Android and iOS ship the same feature in the same build cycle. No more staggered rollouts where iOS trails Android by a sprint. One release window, two stores, zero drift.</p>
+        <ul style="margin-top:12px;padding-left:18px;font-size:13.5px;color:var(--txt-dim);line-height:1.8">
+          <li>Simultaneous Android + iOS releases</li>
+          <li>No iOS-only hotfixes for parity gaps</li>
+          <li>Simpler release checklist — one branch</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div style="font-size:26px;margin-bottom:14px">📦</div>
+        <h3 style="margin-bottom:8px;font-size:1.05rem">Product Team</h3>
+        <p class="muted" style="font-size:14px">Features spec'd once, delivered once. No negotiating "Android first, iOS next sprint" — both platforms are in scope by default. Faster iteration, tighter feedback loops with users on either device.</p>
+        <ul style="margin-top:12px;padding-left:18px;font-size:13.5px;color:var(--txt-dim);line-height:1.8">
+          <li>No platform-split in roadmap planning</li>
+          <li>Feature parity guaranteed at launch</li>
+          <li>Quicker A/B rollout across both platforms</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div style="font-size:26px;margin-bottom:14px">🎧</div>
+        <h3 style="margin-bottom:8px;font-size:1.05rem">Customer Success Team</h3>
+        <p class="muted" style="font-size:14px">Same UI, same flows, same behaviour on every device a customer holds. CS reps troubleshoot once instead of platform-branching every support call. Bug fixes land on iOS and Android together — no "that's an iOS-only issue."</p>
+        <ul style="margin-top:12px;padding-left:18px;font-size:13.5px;color:var(--txt-dim);line-height:1.8">
+          <li>Consistent UX to demonstrate and support</li>
+          <li>No platform-conditional support scripts</li>
+          <li>Faster fix turnaround for escalations</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- 6. IMPACT -->
 <section id="impact">
   <div class="wrap">
@@ -825,18 +907,18 @@ context.<span class="tok-fn">getString</span>(R.string.login)
   <div class="wrap">
     <div class="section-head reveal">
       <div class="eyebrow"><span class="num">07</span> The Multiplier</div>
-      <h2>One team of 11.<br/>Migrated by <span class="gradient-text">5</span>, in <span class="gradient-text">one quarter</span>.</h2>
-      <p class="lead">BizomNext was never two teams — it's a single 11-person crew owning both apps. Pre-CMP, every cross-platform task hit them twice. The migration itself? <b>4 engineers</b>, <b>one quarter</b> — because Claude Code and an AI tooling stack did the heavy lifting.</p>
+      <h2>One team of 11.<br/>Migrated by <span class="gradient-text">3</span>, in <span class="gradient-text">one quarter</span>.</h2>
+      <p class="lead">BizomNext was never two teams — it's a single 11-person crew owning both apps. Pre-CMP, every cross-platform task hit them twice. The migration itself? <b>3 engineers</b>, <b>one quarter</b> — because Claude Code and an AI tooling stack did the heavy lifting.</p>
     </div>
 
     <div class="ai-stats reveal">
       <div><b>11</b><span>engineers own BizomNext (both apps)</span></div>
-      <div><b>5</b><span>ran the entire CMP migration</span></div>
+      <div><b>3</b><span>ran the entire CMP migration</span></div>
       <div><b>1Q</b><span>start → shipped to both stores</span></div>
       <div><b>2× → 1×</b><span>per-feature effort collapsed</span></div>
     </div>
 
-    <h3 class="reveal" style="margin-bottom:6px">How 5 engineers moved like 10</h3>
+    <h3 class="reveal" style="margin-bottom:6px">How 3 engineers moved fast</h3>
     <p class="muted reveal" style="margin-bottom:24px;font-size:14.5px">The AI stack didn't just write code — it cut token cost and kept context across months of migration, so a small team could sustain a huge sweep.</p>
 
     <div class="grid3">
